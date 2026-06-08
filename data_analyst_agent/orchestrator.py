@@ -165,16 +165,41 @@ def make_data_analyst_agent(model, checkpointer: Optional[object] = None):
         logger.info("Running EDA graph")
 
         # TODO: Invoke eda_graph with the cleaned data and return the response.
-        raise NotImplementedError("Implement run_eda_node")
+        eda_response = eda_graph.invoke(
+            {
+                "dataframe": state.get("data_cleaned", {}),
+            }
+        )
+        # if results not empty, return the response
+        if eda_response.get("results"):
+            return {
+                "eda_response": eda_response
+                }
 
     def route_after_cleaning(state: OrchestrationState) -> str:
         """Route to EDA if cleaning succeeded, otherwise end."""
         # TODO: Return "run_eda" or "end" based on the cleaning result.
-        raise NotImplementedError("Implement route_after_cleaning")
+        cleaned = state.get("data_cleaned")
+        if cleaned:
+            return "run_eda"
+        return "end"
 
     # TODO: Assemble the graph — add nodes, set entry point, and wire edges.
     workflow = StateGraph(OrchestrationState)
-
-    raise NotImplementedError("Assemble the graph")
+    workflow.add_node("pii_check", pii_check_node)
+    workflow.add_node("clean_data", clean_data_node)
+    workflow.add_node("run_eda", run_eda_node)
+    workflow.set_entry_point("pii_check")
+    workflow.add_conditional_edges(
+        "pii_check",
+        route_after_pii_check,
+        {"clean_data": "clean_data", "end": END},
+    )
+    workflow.add_conditional_edges(
+        "clean_data",
+        route_after_cleaning,
+        {"run_eda": "run_eda", "end": END},
+    )
+    workflow.add_edge("run_eda", END)
 
     return workflow.compile(checkpointer=checkpointer, name=AGENT_NAME)
